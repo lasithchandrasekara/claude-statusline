@@ -49,13 +49,34 @@ if [ -n "$cwd" ]; then
   parts="${parts}$(printf "${dim}%s${reset}" "$display_path")  "
 fi
 
-# Git repo name and branch
+# Git repo name, branch, and inline status
 if [ -n "$git_repo" ] && [ -n "$git_branch" ]; then
   parts="${parts}$(printf "${cyan}%s/%s${reset}" "$git_repo" "$git_branch")  "
 elif [ -n "$git_branch" ]; then
   parts="${parts}$(printf "${cyan}%s${reset}" "$git_branch")  "
 elif [ -n "$git_repo" ]; then
   parts="${parts}$(printf "${cyan}%s${reset}" "$git_repo")  "
+fi
+
+if [ -n "$cwd" ]; then
+  if [ -n "$(git -C "$cwd" --no-optional-locks status --porcelain 2>/dev/null)" ]; then
+    parts="${parts}$(printf "${yellow}*${reset}")  "
+  fi
+  ab=$(git -C "$cwd" --no-optional-locks rev-list --left-right --count "HEAD...@{u}" 2>/dev/null)
+  if [ -n "$ab" ]; then
+    git_ahead=$(echo "$ab" | awk '{print $1}')
+    git_behind=$(echo "$ab" | awk '{print $2}')
+    if [ "${git_ahead:-0}" -gt 0 ] 2>/dev/null; then
+      parts="${parts}$(printf "${cyan}+%s${reset}" "$git_ahead")  "
+    fi
+    if [ "${git_behind:-0}" -gt 0 ] 2>/dev/null; then
+      parts="${parts}$(printf "${cyan}-%s${reset}" "$git_behind")  "
+    fi
+  fi
+  stash_count=$(git -C "$cwd" --no-optional-locks stash list 2>/dev/null | wc -l | tr -d ' ')
+  if [ "${stash_count:-0}" -gt 0 ] 2>/dev/null; then
+    parts="${parts}$(printf "${dim}~%s${reset}" "$stash_count")  "
+  fi
 fi
 
 # Model name
@@ -101,34 +122,10 @@ if [ -n "$seven_day_pct" ]; then
   parts="${parts}${part}  "
 fi
 
-# Git status second line
-line2=""
-if [ -n "$cwd" ]; then
-  if [ -n "$(git -C "$cwd" --no-optional-locks status --porcelain 2>/dev/null)" ]; then
-    line2="${line2}$(printf "${yellow}*${reset}")  "
-  fi
-  ab=$(git -C "$cwd" --no-optional-locks rev-list --left-right --count "HEAD...@{u}" 2>/dev/null)
-  if [ -n "$ab" ]; then
-    git_ahead=$(echo "$ab" | awk '{print $1}')
-    git_behind=$(echo "$ab" | awk '{print $2}')
-    if [ "${git_ahead:-0}" -gt 0 ] 2>/dev/null; then
-      line2="${line2}$(printf "${cyan}+%s${reset}" "$git_ahead")  "
-    fi
-    if [ "${git_behind:-0}" -gt 0 ] 2>/dev/null; then
-      line2="${line2}$(printf "${cyan}-%s${reset}" "$git_behind")  "
-    fi
-  fi
-  stash_count=$(git -C "$cwd" --no-optional-locks stash list 2>/dev/null | wc -l | tr -d ' ')
-  if [ "${stash_count:-0}" -gt 0 ] 2>/dev/null; then
-    line2="${line2}$(printf "${dim}~%s${reset}" "$stash_count")  "
-  fi
-  line2="${line2%  }"
-fi
-
-# Other Claude sessions (waiting or busy, excluding this one)
+# Other Claude sessions (waiting or busy, excluding this one) — one per line
 my_parent_pid=$(ps -o ppid= -p $$ 2>/dev/null | tr -d ' ')
 session_dir="$HOME/.claude/sessions"
-other_sessions=""
+session_lines=""
 if [ -d "$session_dir" ]; then
   for f in "$session_dir"/*.json; do
     [ -f "$f" ] || continue
@@ -140,25 +137,17 @@ if [ -d "$session_dir" ]; then
     kill -0 "$s_pid" 2>/dev/null || continue
     [ -z "$s_name" ] && s_name="unnamed"
     if [ "$s_status" = "waiting" ]; then
-      other_sessions="${other_sessions}$(printf "${yellow}? %s${reset}" "$s_name")  "
+      session_lines="${session_lines}
+$(printf "${yellow}? %s${reset}" "$s_name")"
     else
-      other_sessions="${other_sessions}$(printf "${dim}> %s${reset}" "$s_name")  "
+      session_lines="${session_lines}
+$(printf "${dim}> %s${reset}" "$s_name")"
     fi
   done
-  other_sessions="${other_sessions%  }"
-fi
-
-if [ -n "$other_sessions" ]; then
-  if [ -n "$line2" ]; then
-    line2="${line2}  $(printf "${dim}|${reset}")  ${other_sessions}"
-  else
-    line2="$other_sessions"
-  fi
 fi
 
 output="${parts%  }"
-if [ -n "$line2" ]; then
-  output="${output}
-${line2}"
+if [ -n "$session_lines" ]; then
+  output="${output}${session_lines}"
 fi
 printf "%s" "$output"

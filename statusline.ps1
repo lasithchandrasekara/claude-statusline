@@ -22,7 +22,6 @@ function Format-TimeRemaining([long]$seconds) {
 $now = [DateTimeOffset]::UtcNow.ToUnixTimeSeconds()
 
 $parts = @()
-$gitLine2Parts = @()
 
 # Current working directory (shortened)
 $cwd = if ($json.workspace.current_dir) { $json.workspace.current_dir } else { $json.cwd }
@@ -31,7 +30,7 @@ if ($cwd) {
     $parts += "${dim}${displayPath}${reset}"
 }
 
-# Git repo name and branch
+# Git repo name, branch, and inline status
 if ($cwd) {
     $gitBranch = git -C "$cwd" --no-optional-locks symbolic-ref --short HEAD 2>$null
     $gitTopLevel = git -C "$cwd" --no-optional-locks rev-parse --show-toplevel 2>$null
@@ -44,9 +43,9 @@ if ($cwd) {
         $parts += "${cyan}${gitRepoName}${reset}"
     }
 
-    # Git status second line
+    # Git status inline after branch
     $dirty = git -C "$cwd" --no-optional-locks status --porcelain 2>$null
-    if ($dirty) { $gitLine2Parts += "${yellow}*${reset}" }
+    if ($dirty) { $parts += "${yellow}*${reset}" }
 
     $revList = git -C "$cwd" --no-optional-locks rev-list --left-right --count "HEAD...@{u}" 2>$null
     if ($revList) {
@@ -54,13 +53,13 @@ if ($cwd) {
         if ($counts.Count -ge 2) {
             $ahead  = [int]$counts[0]
             $behind = [int]$counts[1]
-            if ($ahead  -gt 0) { $gitLine2Parts += "${cyan}+${ahead}${reset}" }
-            if ($behind -gt 0) { $gitLine2Parts += "${cyan}-${behind}${reset}" }
+            if ($ahead  -gt 0) { $parts += "${cyan}+${ahead}${reset}" }
+            if ($behind -gt 0) { $parts += "${cyan}-${behind}${reset}" }
         }
     }
 
     $stashCount = @(git -C "$cwd" --no-optional-locks stash list 2>$null).Count
-    if ($stashCount -gt 0) { $gitLine2Parts += "${dim}~${stashCount}${reset}" }
+    if ($stashCount -gt 0) { $parts += "${dim}~${stashCount}${reset}" }
 }
 
 # Model
@@ -103,9 +102,9 @@ if ($null -ne $sevenDay) {
     $parts += $part
 }
 
-# Other Claude sessions (waiting or busy, excluding this one)
+# Other Claude sessions (waiting or busy, excluding this one) — one per line
 $myParentPid = try { (Get-Process -Id $PID -ErrorAction Stop).Parent.Id } catch { $null }
-$otherSessionParts = @()
+$sessionLines = @()
 $sessionDir = Join-Path $env:USERPROFILE ".claude\sessions"
 if (Test-Path $sessionDir) {
     foreach ($file in Get-ChildItem "$sessionDir\*.json" -ErrorAction SilentlyContinue) {
@@ -116,21 +115,16 @@ if (Test-Path $sessionDir) {
             if (-not (Get-Process -Id $session.pid -ErrorAction SilentlyContinue)) { continue }
             $sessionName = if ($session.name) { $session.name.Trim('"') } else { "unnamed" }
             if ($session.status -eq 'waiting') {
-                $otherSessionParts += "${yellow}? ${sessionName}${reset}"
+                $sessionLines += "${yellow}? ${sessionName}${reset}"
             } else {
-                $otherSessionParts += "${dim}> ${sessionName}${reset}"
+                $sessionLines += "${dim}> ${sessionName}${reset}"
             }
         } catch {}
     }
 }
 
 $output = $parts -join "  "
-$line2 = $gitLine2Parts -join "  "
-if ($otherSessionParts.Count -gt 0) {
-    $sep = if ($line2) { "  ${dim}|${reset}  " } else { "" }
-    $line2 += $sep + ($otherSessionParts -join "  ")
-}
-if ($line2) {
-    $output += "`n" + $line2
+foreach ($line in $sessionLines) {
+    $output += "`n" + $line
 }
 [Console]::Write($output)

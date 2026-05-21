@@ -3,8 +3,9 @@
 A custom status line for [Claude Code CLI](https://claude.ai/code) that shows working directory, git repo/branch, model, context window usage, and rate limit usage with reset countdowns.
 
 ```
-~/Dev/github/my-repo  my-repo/main  Sonnet 4.6  ctx:37%  5h:28%(27m)  7d:9%(4d0h)
-* +2 -1 ~1
+~/Dev/github/my-repo  my-repo/main  *  +2  Sonnet 4.6  ctx:37%  5h:28%(27m)  7d:9%(4d0h)
+? AR sync implementation
+> Other busy session
 ```
 
 ## What it shows
@@ -15,21 +16,20 @@ A custom status line for [Claude Code CLI](https://claude.ai/code) that shows wo
 |---|---|
 | `~/Dev/github/my-repo` | Current working directory (`~` for home) |
 | `my-repo/main` | Git repo name and current branch |
+| `*` | Uncommitted changes (modified, staged, or untracked files) |
+| `+N` / `-N` | Commits ahead / behind remote tracking branch |
+| `~N` | Stash entries |
 | `Sonnet 4.6` | Active model |
 | `ctx:37%` | Context window used (green → yellow at 60% → red at 80%) |
 | `5h:28%(27m)` | 5-hour session usage + time until reset |
 | `7d:9%(4d0h)` | Weekly usage + time until reset |
 
-**Line 2** (only shown when non-empty)
+**Additional lines** (one per other active session)
 
 | Segment | Description |
 |---|---|
-| `*` | Uncommitted changes (modified, staged, or untracked files) |
-| `+N` | N commits ahead of remote tracking branch |
-| `-N` | N commits behind remote tracking branch |
-| `~N` | N stash entries |
-| `\| ? name` | Another Claude Code session waiting for your input (yellow) |
-| `\| > name` | Another Claude Code session actively processing (dim) |
+| `? name` | Another Claude Code session waiting for your input (yellow) |
+| `> name` | Another Claude Code session actively processing (dim) |
 
 Rate limit segments are color-coded: green below 60%, yellow 60–79%, red 80%+. Reset countdowns are shown in dimmed text.
 
