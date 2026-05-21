@@ -28,6 +28,8 @@ A custom status line for [Claude Code CLI](https://claude.ai/code) that shows wo
 | `+N` | N commits ahead of remote tracking branch |
 | `-N` | N commits behind remote tracking branch |
 | `~N` | N stash entries |
+| `\| ? name` | Another Claude Code session waiting for your input (yellow) |
+| `\| > name` | Another Claude Code session actively processing (dim) |
 
 Rate limit segments are color-coded: green below 60%, yellow 60–79%, red 80%+. Reset countdowns are shown in dimmed text.
 
@@ -81,3 +83,4 @@ Requires `jq` and `git` on `PATH`.
 - The status line is updated by Claude Code after each turn, not on a real-time ticker.
 - Line 2 (git status) is hidden entirely when the repo is clean, in sync, and has no stashes.
 - Ahead/behind counts are skipped silently if no remote tracking branch is configured.
+- Other session detection reads `~/.claude/sessions/*.json` and verifies each PID is still running before showing it.

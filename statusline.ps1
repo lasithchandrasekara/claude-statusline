@@ -103,8 +103,34 @@ if ($null -ne $sevenDay) {
     $parts += $part
 }
 
+# Other Claude sessions (waiting or busy, excluding this one)
+$myParentPid = try { (Get-Process -Id $PID -ErrorAction Stop).Parent.Id } catch { $null }
+$otherSessionParts = @()
+$sessionDir = Join-Path $env:USERPROFILE ".claude\sessions"
+if (Test-Path $sessionDir) {
+    foreach ($file in Get-ChildItem "$sessionDir\*.json" -ErrorAction SilentlyContinue) {
+        try {
+            $session = Get-Content $file.FullName -Raw | ConvertFrom-Json
+            if ($session.pid -eq $myParentPid) { continue }
+            if ($session.status -notin @('waiting', 'busy')) { continue }
+            if (-not (Get-Process -Id $session.pid -ErrorAction SilentlyContinue)) { continue }
+            $sessionName = if ($session.name) { $session.name.Trim('"') } else { "unnamed" }
+            if ($session.status -eq 'waiting') {
+                $otherSessionParts += "${yellow}? ${sessionName}${reset}"
+            } else {
+                $otherSessionParts += "${dim}> ${sessionName}${reset}"
+            }
+        } catch {}
+    }
+}
+
 $output = $parts -join "  "
-if ($gitLine2Parts.Count -gt 0) {
-    $output += "`n" + ($gitLine2Parts -join "  ")
+$line2 = $gitLine2Parts -join "  "
+if ($otherSessionParts.Count -gt 0) {
+    $sep = if ($line2) { "  ${dim}|${reset}  " } else { "" }
+    $line2 += $sep + ($otherSessionParts -join "  ")
+}
+if ($line2) {
+    $output += "`n" + $line2
 }
 [Console]::Write($output)

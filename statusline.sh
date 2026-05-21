@@ -125,6 +125,37 @@ if [ -n "$cwd" ]; then
   line2="${line2%  }"
 fi
 
+# Other Claude sessions (waiting or busy, excluding this one)
+my_parent_pid=$(ps -o ppid= -p $$ 2>/dev/null | tr -d ' ')
+session_dir="$HOME/.claude/sessions"
+other_sessions=""
+if [ -d "$session_dir" ]; then
+  for f in "$session_dir"/*.json; do
+    [ -f "$f" ] || continue
+    s_pid=$(jq -r '.pid // empty' "$f" 2>/dev/null)
+    s_status=$(jq -r '.status // empty' "$f" 2>/dev/null)
+    s_name=$(jq -r '.name // empty' "$f" 2>/dev/null | tr -d '"')
+    [ "$s_pid" = "$my_parent_pid" ] && continue
+    [ "$s_status" = "waiting" ] || [ "$s_status" = "busy" ] || continue
+    kill -0 "$s_pid" 2>/dev/null || continue
+    [ -z "$s_name" ] && s_name="unnamed"
+    if [ "$s_status" = "waiting" ]; then
+      other_sessions="${other_sessions}$(printf "${yellow}? %s${reset}" "$s_name")  "
+    else
+      other_sessions="${other_sessions}$(printf "${dim}> %s${reset}" "$s_name")  "
+    fi
+  done
+  other_sessions="${other_sessions%  }"
+fi
+
+if [ -n "$other_sessions" ]; then
+  if [ -n "$line2" ]; then
+    line2="${line2}  $(printf "${dim}|${reset}")  ${other_sessions}"
+  else
+    line2="$other_sessions"
+  fi
+fi
+
 output="${parts%  }"
 if [ -n "$line2" ]; then
   output="${output}
