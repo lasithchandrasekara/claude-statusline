@@ -22,14 +22,45 @@ function Format-TimeRemaining([long]$seconds) {
 $now = [DateTimeOffset]::UtcNow.ToUnixTimeSeconds()
 
 $parts = @()
+$gitLine2Parts = @()
 
-# Git branch
+# Current working directory (shortened)
 $cwd = if ($json.workspace.current_dir) { $json.workspace.current_dir } else { $json.cwd }
 if ($cwd) {
+    $displayPath = ($cwd -replace [regex]::Escape($env:USERPROFILE), '~') -replace '\\', '/'
+    $parts += "${dim}${displayPath}${reset}"
+}
+
+# Git repo name and branch
+if ($cwd) {
     $gitBranch = git -C "$cwd" --no-optional-locks symbolic-ref --short HEAD 2>$null
-    if ($gitBranch) {
+    $gitTopLevel = git -C "$cwd" --no-optional-locks rev-parse --show-toplevel 2>$null
+    $gitRepoName = if ($gitTopLevel) { Split-Path -Leaf $gitTopLevel } else { $null }
+    if ($gitRepoName -and $gitBranch) {
+        $parts += "${cyan}${gitRepoName}/${gitBranch}${reset}"
+    } elseif ($gitBranch) {
         $parts += "${cyan}${gitBranch}${reset}"
+    } elseif ($gitRepoName) {
+        $parts += "${cyan}${gitRepoName}${reset}"
     }
+
+    # Git status second line
+    $dirty = git -C "$cwd" --no-optional-locks status --porcelain 2>$null
+    if ($dirty) { $gitLine2Parts += "${yellow}*${reset}" }
+
+    $revList = git -C "$cwd" --no-optional-locks rev-list --left-right --count "HEAD...@{u}" 2>$null
+    if ($revList) {
+        $counts = ([string]$revList).Trim() -split '\s+'
+        if ($counts.Count -ge 2) {
+            $ahead  = [int]$counts[0]
+            $behind = [int]$counts[1]
+            if ($ahead  -gt 0) { $gitLine2Parts += "${cyan}+${ahead}${reset}" }
+            if ($behind -gt 0) { $gitLine2Parts += "${cyan}-${behind}${reset}" }
+        }
+    }
+
+    $stashCount = @(git -C "$cwd" --no-optional-locks stash list 2>$null).Count
+    if ($stashCount -gt 0) { $gitLine2Parts += "${dim}~${stashCount}${reset}" }
 }
 
 # Model
@@ -72,4 +103,8 @@ if ($null -ne $sevenDay) {
     $parts += $part
 }
 
-[Console]::Write($parts -join "  ")
+$output = $parts -join "  "
+if ($gitLine2Parts.Count -gt 0) {
+    $output += "`n" + ($gitLine2Parts -join "  ")
+}
+[Console]::Write($output)

@@ -1,20 +1,33 @@
 # claude-statusline
 
-A custom status line for [Claude Code CLI](https://claude.ai/code) that shows git branch, model, context window usage, and rate limit usage with reset countdowns.
+A custom status line for [Claude Code CLI](https://claude.ai/code) that shows working directory, git repo/branch, model, context window usage, and rate limit usage with reset countdowns.
 
 ```
-feature/my-branch  Sonnet 4.6  ctx:37%  5h:28%(27m)  7d:9%(4d0h)
+~/Dev/github/my-repo  my-repo/main  Sonnet 4.6  ctx:37%  5h:28%(27m)  7d:9%(4d0h)
+* +2 -1 ~1
 ```
 
 ## What it shows
 
+**Line 1**
+
 | Segment | Description |
 |---|---|
-| `feature/my-branch` | Current git branch of the working directory |
+| `~/Dev/github/my-repo` | Current working directory (`~` for home) |
+| `my-repo/main` | Git repo name and current branch |
 | `Sonnet 4.6` | Active model |
 | `ctx:37%` | Context window used (green → yellow at 60% → red at 80%) |
 | `5h:28%(27m)` | 5-hour session usage + time until reset |
 | `7d:9%(4d0h)` | Weekly usage + time until reset |
+
+**Line 2** (only shown when non-empty)
+
+| Segment | Description |
+|---|---|
+| `*` | Uncommitted changes (modified, staged, or untracked files) |
+| `+N` | N commits ahead of remote tracking branch |
+| `-N` | N commits behind remote tracking branch |
+| `~N` | N stash entries |
 
 Rate limit segments are color-coded: green below 60%, yellow 60–79%, red 80%+. Reset countdowns are shown in dimmed text.
 
@@ -66,3 +79,5 @@ Requires `jq` and `git` on `PATH`.
 - Rate limit data (`5h`, `7d`) only appears after the first API response in a session — it is absent for Pro/Max subscribers when no limits have been hit yet.
 - The `resets_at` timestamp is provided by Claude Code and may take a turn or two to stabilise to the exact reset time.
 - The status line is updated by Claude Code after each turn, not on a real-time ticker.
+- Line 2 (git status) is hidden entirely when the repo is clean, in sync, and has no stashes.
+- Ahead/behind counts are skipped silently if no remote tracking branch is configured.

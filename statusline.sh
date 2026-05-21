@@ -32,15 +32,30 @@ seven_resets_at=$(echo "$input" | jq -r '.rate_limits.seven_day.resets_at // emp
 cwd=$(echo "$input" | jq -r '.workspace.current_dir // .cwd // empty')
 
 git_branch=""
+git_repo=""
 if [ -n "$cwd" ]; then
   git_branch=$(git -C "$cwd" --no-optional-locks symbolic-ref --short HEAD 2>/dev/null)
+  git_toplevel=$(git -C "$cwd" --no-optional-locks rev-parse --show-toplevel 2>/dev/null)
+  if [ -n "$git_toplevel" ]; then
+    git_repo=$(basename "$git_toplevel")
+  fi
 fi
 
 parts=""
 
-# Git branch
-if [ -n "$git_branch" ]; then
+# Current working directory (shortened)
+if [ -n "$cwd" ]; then
+  display_path=$(echo "$cwd" | sed "s|^$HOME|~|")
+  parts="${parts}$(printf "${dim}%s${reset}" "$display_path")  "
+fi
+
+# Git repo name and branch
+if [ -n "$git_repo" ] && [ -n "$git_branch" ]; then
+  parts="${parts}$(printf "${cyan}%s/%s${reset}" "$git_repo" "$git_branch")  "
+elif [ -n "$git_branch" ]; then
   parts="${parts}$(printf "${cyan}%s${reset}" "$git_branch")  "
+elif [ -n "$git_repo" ]; then
+  parts="${parts}$(printf "${cyan}%s${reset}" "$git_repo")  "
 fi
 
 # Model name
@@ -86,4 +101,33 @@ if [ -n "$seven_day_pct" ]; then
   parts="${parts}${part}  "
 fi
 
-printf "%s" "${parts%  }"
+# Git status second line
+line2=""
+if [ -n "$cwd" ]; then
+  if [ -n "$(git -C "$cwd" --no-optional-locks status --porcelain 2>/dev/null)" ]; then
+    line2="${line2}$(printf "${yellow}*${reset}")  "
+  fi
+  ab=$(git -C "$cwd" --no-optional-locks rev-list --left-right --count "HEAD...@{u}" 2>/dev/null)
+  if [ -n "$ab" ]; then
+    git_ahead=$(echo "$ab" | awk '{print $1}')
+    git_behind=$(echo "$ab" | awk '{print $2}')
+    if [ "${git_ahead:-0}" -gt 0 ] 2>/dev/null; then
+      line2="${line2}$(printf "${cyan}+%s${reset}" "$git_ahead")  "
+    fi
+    if [ "${git_behind:-0}" -gt 0 ] 2>/dev/null; then
+      line2="${line2}$(printf "${cyan}-%s${reset}" "$git_behind")  "
+    fi
+  fi
+  stash_count=$(git -C "$cwd" --no-optional-locks stash list 2>/dev/null | wc -l | tr -d ' ')
+  if [ "${stash_count:-0}" -gt 0 ] 2>/dev/null; then
+    line2="${line2}$(printf "${dim}~%s${reset}" "$stash_count")  "
+  fi
+  line2="${line2%  }"
+fi
+
+output="${parts%  }"
+if [ -n "$line2" ]; then
+  output="${output}
+${line2}"
+fi
+printf "%s" "$output"
