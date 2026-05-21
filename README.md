@@ -3,7 +3,7 @@
 A custom status line for [Claude Code CLI](https://claude.ai/code) that shows working directory, git repo/branch, model, context window usage, and rate limit usage with reset countdowns.
 
 ```
-~/Dev/github/my-repo  my-repo/main  *  +2  Sonnet 4.6  ctx:37%  5h:28%(27m)  7d:9%(4d0h)
+~/Dev/github/my-repo  my-repo/main  *  +2  Sonnet 4.6  effort:high  ctx:60%(119k/200k)  $3.94  +416 -118  5h:74%(4h32m)  7d:39%(2d18h)
 ? AR sync implementation
 > Other busy session
 ```
@@ -20,7 +20,10 @@ A custom status line for [Claude Code CLI](https://claude.ai/code) that shows wo
 | `+N` / `-N` | Commits ahead / behind remote tracking branch |
 | `~N` | Stash entries |
 | `Sonnet 4.6` | Active model |
-| `ctx:37%` | Context window used (green → yellow at 60% → red at 80%) |
+| `effort:high` | Effort level when non-default (dim) |
+| `ctx:60%(119k/200k)` | Context window used % + token count / window size |
+| `$3.94` | Cumulative session cost in USD (dim) |
+| `+416 -118` | Lines added / removed this session |
 | `5h:28%(27m)` | 5-hour session usage + time until reset |
 | `7d:9%(4d0h)` | Weekly usage + time until reset |
 

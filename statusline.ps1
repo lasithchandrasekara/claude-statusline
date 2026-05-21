@@ -62,16 +62,40 @@ if ($cwd) {
     if ($stashCount -gt 0) { $parts += "${dim}~${stashCount}${reset}" }
 }
 
-# Model
+# Model + effort level
 $model = if ($json.model.display_name) { $json.model.display_name } else { "Unknown model" }
-$parts += "${white}${model}${reset}"
+$effort = $json.effort.level
+$modelStr = "${white}${model}${reset}"
+if ($effort -and $effort -ne "normal") { $modelStr += "  ${dim}effort:${effort}${reset}" }
+$parts += $modelStr
 
-# Context %
+# Context % with token count
 $usedPct = $json.context_window.used_percentage
 if ($null -ne $usedPct) {
     $usedInt = [int]$usedPct
     $color = if ($usedInt -ge 80) { $red } elseif ($usedInt -ge 60) { $yellow } else { $green }
-    $parts += "ctx:${color}$([int]$usedPct)%${reset}"
+    $usedTokens = $json.context_window.total_input_tokens
+    $ctxSize = $json.context_window.context_window_size
+    $tokenStr = if ($usedTokens -and $ctxSize) {
+        $usedK = [math]::Round($usedTokens / 1000)
+        $sizeK = [math]::Round($ctxSize / 1000)
+        "${dim}(${usedK}k/${sizeK}k)${reset}"
+    } else { "" }
+    $parts += "ctx:${color}$([int]$usedPct)%${reset}${tokenStr}"
+}
+
+# Session cost and lines changed
+$totalCost = $json.cost.total_cost_usd
+if ($null -ne $totalCost) {
+    $parts += "${dim}`$$([math]::Round($totalCost, 2).ToString('0.00'))${reset}"
+}
+$linesAdded   = $json.cost.total_lines_added
+$linesRemoved = $json.cost.total_lines_removed
+if ($linesAdded -or $linesRemoved) {
+    $linePart = ""
+    if ($linesAdded)   { $linePart += "${green}+${linesAdded}${reset}" }
+    if ($linesRemoved) { $linePart += " ${red}-${linesRemoved}${reset}" }
+    $parts += $linePart.Trim()
 }
 
 # 5-hour session usage

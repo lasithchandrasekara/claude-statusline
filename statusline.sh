@@ -24,11 +24,17 @@ format_time_remaining() {
 now=$(date -u +%s)
 
 model=$(echo "$input" | jq -r '.model.display_name // "Unknown model"')
+effort=$(echo "$input" | jq -r '.effort.level // empty')
 used_pct=$(echo "$input" | jq -r '.context_window.used_percentage // empty')
+used_tokens=$(echo "$input" | jq -r '.context_window.total_input_tokens // empty')
+ctx_size=$(echo "$input" | jq -r '.context_window.context_window_size // empty')
 five_hour_pct=$(echo "$input" | jq -r '.rate_limits.five_hour.used_percentage // empty')
 five_resets_at=$(echo "$input" | jq -r '.rate_limits.five_hour.resets_at // empty')
 seven_day_pct=$(echo "$input" | jq -r '.rate_limits.seven_day.used_percentage // empty')
 seven_resets_at=$(echo "$input" | jq -r '.rate_limits.seven_day.resets_at // empty')
+total_cost=$(echo "$input" | jq -r '.cost.total_cost_usd // empty')
+lines_added=$(echo "$input" | jq -r '.cost.total_lines_added // empty')
+lines_removed=$(echo "$input" | jq -r '.cost.total_lines_removed // empty')
 cwd=$(echo "$input" | jq -r '.workspace.current_dir // .cwd // empty')
 
 git_branch=""
@@ -79,17 +85,39 @@ if [ -n "$cwd" ]; then
   fi
 fi
 
-# Model name
-parts="${parts}$(printf "${white}%s${reset}" "$model")  "
+# Model + effort level
+model_str=$(printf "${white}%s${reset}" "$model")
+if [ -n "$effort" ] && [ "$effort" != "normal" ]; then
+  model_str="${model_str}  $(printf "${dim}effort:%s${reset}" "$effort")"
+fi
+parts="${parts}${model_str}  "
 
-# Context %
+# Context % with token count
 if [ -n "$used_pct" ]; then
   used_int=${used_pct%.*}
   if [ "$used_int" -ge 80 ] 2>/dev/null; then ctx_color="$red"
   elif [ "$used_int" -ge 60 ] 2>/dev/null; then ctx_color="$yellow"
   else ctx_color="$green"
   fi
-  parts="${parts}$(printf "ctx:${ctx_color}%.0f%%${reset}" "$used_pct")  "
+  token_str=""
+  if [ -n "$used_tokens" ] && [ -n "$ctx_size" ]; then
+    used_k=$(( (used_tokens + 500) / 1000 ))
+    size_k=$(( (ctx_size + 500) / 1000 ))
+    token_str="$(printf "${dim}(%sk/%sk)${reset}" "$used_k" "$size_k")"
+  fi
+  parts="${parts}$(printf "ctx:${ctx_color}%.0f%%${reset}" "$used_pct")${token_str}  "
+fi
+
+# Session cost and lines changed
+if [ -n "$total_cost" ]; then
+  cost_fmt=$(printf "%.2f" "$total_cost")
+  parts="${parts}$(printf "${dim}\$%s${reset}" "$cost_fmt")  "
+fi
+if [ -n "$lines_added" ] || [ -n "$lines_removed" ]; then
+  line_part=""
+  [ -n "$lines_added" ]   && line_part="${line_part}$(printf "${green}+%s${reset}" "$lines_added")"
+  [ -n "$lines_removed" ] && line_part="${line_part} $(printf "${red}-%s${reset}" "$lines_removed")"
+  parts="${parts}${line_part# }  "
 fi
 
 # 5-hour session usage
