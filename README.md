@@ -2,10 +2,12 @@
 
 A custom status line for [Claude Code CLI](https://claude.ai/code) that shows working directory, git repo/branch, model, context window usage, and rate limit usage with reset countdowns.
 
+![claude-statusline screenshot](docs/screenshot.png)
+
 ```
 ~/Dev/github/my-repo  my-repo/main  *  +2  Sonnet 4.6  effort:high  ctx:60%(119k/200k)  $3.94  +416 -118  5h:74%(4h32m)  7d:39%(2d18h)
-? AR sync implementation
-> Other busy session
+? AR sync implementation  ~/Dev/github/my-repo  my-repo/feat/auth  *  Waiting for permission prompt (21m)
+> Other busy session  ~/Dev/github/other-repo  other-repo/main  3m ago
 ```
 
 ## What it shows
@@ -33,6 +35,11 @@ A custom status line for [Claude Code CLI](https://claude.ai/code) that shows wo
 |---|---|
 | `? name` | Another Claude Code session waiting for your input (yellow) |
 | `> name` | Another Claude Code session actively processing (dim) |
+| `~/path` | Working directory of that session (dim) |
+| `repo/branch` | Git repo and branch of that session (cyan) |
+| `*` / `+N` / `-N` / `~N` | Git dirty / ahead / behind / stash for that session |
+| `Waiting for permission prompt (21m)` | What the session is waiting for + how long (yellow) |
+| `3m ago` | Time since last state change for busy sessions (dim) |
 
 Rate limit segments are color-coded: green below 60%, yellow 60–79%, red 80%+. Reset countdowns are shown in dimmed text.
 

@@ -138,10 +138,48 @@ if (Test-Path $sessionDir) {
             if ($session.status -notin @('waiting', 'busy')) { continue }
             if (-not (Get-Process -Id $session.pid -ErrorAction SilentlyContinue)) { continue }
             $sessionName = if ($session.name) { $session.name.Trim('"') } else { "unnamed" }
+
+            $sParts = @()
+            $sCwd = $session.cwd
+            if ($sCwd) {
+                $sDisplayPath = ($sCwd -replace [regex]::Escape($env:USERPROFILE), '~') -replace '\\', '/'
+                $sParts += "${dim}${sDisplayPath}${reset}"
+                $sBranch   = git -C "$sCwd" --no-optional-locks symbolic-ref --short HEAD 2>$null
+                $sTopLevel = git -C "$sCwd" --no-optional-locks rev-parse --show-toplevel 2>$null
+                $sRepo     = if ($sTopLevel) { Split-Path -Leaf $sTopLevel } else { $null }
+                if ($sRepo -and $sBranch) { $sParts += "${cyan}${sRepo}/${sBranch}${reset}" }
+                elseif ($sBranch)         { $sParts += "${cyan}${sBranch}${reset}" }
+                elseif ($sRepo)           { $sParts += "${cyan}${sRepo}${reset}" }
+                $sDirty = git -C "$sCwd" --no-optional-locks status --porcelain 2>$null
+                if ($sDirty) { $sParts += "${yellow}*${reset}" }
+                $sRevList = git -C "$sCwd" --no-optional-locks rev-list --left-right --count "HEAD...@{u}" 2>$null
+                if ($sRevList) {
+                    $sCounts = ([string]$sRevList).Trim() -split '\s+'
+                    if ($sCounts.Count -ge 2) {
+                        if ([int]$sCounts[0] -gt 0) { $sParts += "${cyan}+$($sCounts[0])${reset}" }
+                        if ([int]$sCounts[1] -gt 0) { $sParts += "${cyan}-$($sCounts[1])${reset}" }
+                    }
+                }
+                $sStash = @(git -C "$sCwd" --no-optional-locks stash list 2>$null).Count
+                if ($sStash -gt 0) { $sParts += "${dim}~${sStash}${reset}" }
+            }
+            if ($session.waitingFor) {
+                $sElapsedStr = ""
+                if ($session.updatedAt) {
+                    $sElapsed = $now - [long]($session.updatedAt / 1000)
+                    $sElapsedStr = " ($(Format-TimeRemaining $sElapsed))"
+                }
+                $sParts += "${yellow}Waiting for $($session.waitingFor)${sElapsedStr}${reset}"
+            } elseif ($session.updatedAt) {
+                $sElapsed = $now - [long]($session.updatedAt / 1000)
+                $sParts += "${dim}$(Format-TimeRemaining $sElapsed) ago${reset}"
+            }
+
+            $sDetail = if ($sParts.Count -gt 0) { "  " + ($sParts -join "  ") } else { "" }
             if ($session.status -eq 'waiting') {
-                $sessionLines += "${yellow}? ${sessionName}${reset}"
+                $sessionLines += "${yellow}? ${sessionName}${reset}${sDetail}"
             } else {
-                $sessionLines += "${dim}> ${sessionName}${reset}"
+                $sessionLines += "${dim}> ${sessionName}${reset}${sDetail}"
             }
         } catch {}
     }

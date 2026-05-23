@@ -160,17 +160,62 @@ if [ -d "$session_dir" ]; then
     s_pid=$(jq -r '.pid // empty' "$f" 2>/dev/null)
     s_status=$(jq -r '.status // empty' "$f" 2>/dev/null)
     s_name=$(jq -r '.name // empty' "$f" 2>/dev/null | tr -d '"')
+    s_cwd=$(jq -r '.cwd // empty' "$f" 2>/dev/null)
+    s_waiting_for=$(jq -r '.waitingFor // empty' "$f" 2>/dev/null)
+    s_updated_at=$(jq -r '.updatedAt // empty' "$f" 2>/dev/null)
     [ "$s_pid" = "$my_parent_pid" ] && continue
     [ "$s_status" = "waiting" ] || [ "$s_status" = "busy" ] || continue
     kill -0 "$s_pid" 2>/dev/null || continue
     [ -z "$s_name" ] && s_name="unnamed"
-    if [ "$s_status" = "waiting" ]; then
-      session_lines="${session_lines}
-$(printf "${yellow}? %s${reset}" "$s_name")"
-    else
-      session_lines="${session_lines}
-$(printf "${dim}> %s${reset}" "$s_name")"
+
+    s_parts=""
+    if [ -n "$s_cwd" ]; then
+      s_display=$(echo "$s_cwd" | sed "s|^$HOME|~|")
+      s_parts="${s_parts}$(printf "${dim}%s${reset}" "$s_display")  "
+      s_branch=$(git -C "$s_cwd" --no-optional-locks symbolic-ref --short HEAD 2>/dev/null)
+      s_toplevel=$(git -C "$s_cwd" --no-optional-locks rev-parse --show-toplevel 2>/dev/null)
+      s_repo=$([ -n "$s_toplevel" ] && basename "$s_toplevel" || echo "")
+      if [ -n "$s_repo" ] && [ -n "$s_branch" ]; then
+        s_parts="${s_parts}$(printf "${cyan}%s/%s${reset}" "$s_repo" "$s_branch")  "
+      elif [ -n "$s_branch" ]; then
+        s_parts="${s_parts}$(printf "${cyan}%s${reset}" "$s_branch")  "
+      elif [ -n "$s_repo" ]; then
+        s_parts="${s_parts}$(printf "${cyan}%s${reset}" "$s_repo")  "
+      fi
+      if [ -n "$(git -C "$s_cwd" --no-optional-locks status --porcelain 2>/dev/null)" ]; then
+        s_parts="${s_parts}$(printf "${yellow}*${reset}")  "
+      fi
+      s_ab=$(git -C "$s_cwd" --no-optional-locks rev-list --left-right --count "HEAD...@{u}" 2>/dev/null)
+      if [ -n "$s_ab" ]; then
+        s_ahead=$(echo "$s_ab" | awk '{print $1}')
+        s_behind=$(echo "$s_ab" | awk '{print $2}')
+        [ "${s_ahead:-0}" -gt 0 ] 2>/dev/null && s_parts="${s_parts}$(printf "${cyan}+%s${reset}" "$s_ahead")  "
+        [ "${s_behind:-0}" -gt 0 ] 2>/dev/null && s_parts="${s_parts}$(printf "${cyan}-%s${reset}" "$s_behind")  "
+      fi
+      s_stash=$(git -C "$s_cwd" --no-optional-locks stash list 2>/dev/null | wc -l | tr -d ' ')
+      [ "${s_stash:-0}" -gt 0 ] 2>/dev/null && s_parts="${s_parts}$(printf "${dim}~%s${reset}" "$s_stash")  "
     fi
+    if [ -n "$s_waiting_for" ]; then
+      s_elapsed_str=""
+      if [ -n "$s_updated_at" ]; then
+        s_elapsed=$(( now - s_updated_at / 1000 ))
+        s_elapsed_str=" ($(format_time_remaining "$s_elapsed"))"
+      fi
+      s_parts="${s_parts}$(printf "${yellow}Waiting for %s%s${reset}" "$s_waiting_for" "$s_elapsed_str")  "
+    elif [ -n "$s_updated_at" ]; then
+      s_elapsed=$(( now - s_updated_at / 1000 ))
+      s_parts="${s_parts}$(printf "${dim}%s ago${reset}" "$(format_time_remaining "$s_elapsed")")  "
+    fi
+
+    if [ "$s_status" = "waiting" ]; then
+      s_prefix=$(printf "${yellow}? %s${reset}" "$s_name")
+    else
+      s_prefix=$(printf "${dim}> %s${reset}" "$s_name")
+    fi
+    s_line="$s_prefix"
+    [ -n "${s_parts%  }" ] && s_line="${s_line}  ${s_parts%  }"
+    session_lines="${session_lines}
+${s_line}"
   done
 fi
 
