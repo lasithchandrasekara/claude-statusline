@@ -6,6 +6,8 @@ Custom status line scripts for Claude Code CLI showing git repo/branch, model, c
 
 - `statusline.ps1` — Windows PowerShell 7+ implementation
 - `statusline.sh` — macOS/Linux bash implementation (requires `jq` and `git`)
+- `insights-tip/extract-tip.ps1` / `extract-tip.sh` — helper sourced by the statusline to build the tip catalog and produce the hourly `tip #N` line; also auto-installs `commands/tip.md` into `~/.claude/commands/`
+- `commands/tip.md` — source-of-truth for the `/tip` custom slash command (the file the helpers write to `~/.claude/commands/`)
 - `settings-example.json` — Example Claude Code settings snippet
 - `README.md` — Installation and usage docs
 

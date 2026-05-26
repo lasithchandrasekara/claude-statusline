@@ -8,6 +8,7 @@ A custom status line for [Claude Code CLI](https://claude.ai/code) that shows wo
 ~/Dev/github/my-repo  my-repo/main  *  +2  Sonnet 4.6  effort:high  ctx:60%(119k/200k)  $3.94  +416 -118  5h:74%(4h32m)  7d:39%(2d18h)
 ? AR sync implementation  ~/Dev/github/my-repo  my-repo/feat/auth  *  Waiting for permission prompt (21m)
 > Other busy session  ~/Dev/github/other-repo  other-repo/main  3m ago
+tip #5: pattern: Skip the Agent for diff-sized PR reviews  (/tip 5 for details)
 ```
 
 ## What it shows
@@ -40,6 +41,7 @@ A custom status line for [Claude Code CLI](https://claude.ai/code) that shows wo
 | `*` / `+N` / `-N` / `~N` | Git dirty / ahead / behind / stash for that session |
 | `Waiting for permission prompt (21m)` | What the session is waiting for + how long (yellow) |
 | `3m ago` | Time since last state change for busy sessions (dim) |
+| `tip #N: ...` | Hourly-rotating tip pulled from your latest `/insights` report; type `/tip N` to expand it (dim) |
 
 Rate limit segments are color-coded: green below 60%, yellow 60–79%, red 80%+. Reset countdowns are shown in dimmed text.
 
@@ -47,7 +49,7 @@ Rate limit segments are color-coded: green below 60%, yellow 60–79%, red 80%+.
 
 ### Windows (PowerShell 7+)
 
-1. Copy `statusline.ps1` somewhere permanent, e.g. `C:\Users\<you>\.claude\statusline.ps1`
+1. Copy `statusline.ps1` **and** the `insights-tip\` folder (preserving the relative layout) somewhere permanent — e.g. `C:\Users\<you>\.claude\statusline.ps1` plus `C:\Users\<you>\.claude\insights-tip\extract-tip.ps1`.
 2. Add to `%USERPROFILE%\.claude\settings.json`:
 
 ```json
@@ -63,7 +65,7 @@ Rate limit segments are color-coded: green below 60%, yellow 60–79%, red 80%+.
 
 Requires `jq` and `git` on `PATH`.
 
-1. Copy `statusline.sh` somewhere permanent, e.g. `~/.claude/statusline.sh`
+1. Copy `statusline.sh` **and** the `insights-tip/` folder (preserving the relative layout) somewhere permanent — e.g. `~/.claude/statusline.sh` plus `~/.claude/insights-tip/extract-tip.sh`.
 2. Make it executable:
    ```bash
    chmod +x ~/.claude/statusline.sh
@@ -94,3 +96,5 @@ Requires `jq` and `git` on `PATH`.
 - Line 2 (git status) is hidden entirely when the repo is clean, in sync, and has no stashes.
 - Ahead/behind counts are skipped silently if no remote tracking branch is configured.
 - Other session detection reads `~/.claude/sessions/*.json` and verifies each PID is still running before showing it.
+- The `tip #N:` line is extracted from the newest `~/.claude/usage-data/report-*.html` produced by `/insights`. The full catalog (all CLAUDE.md suggestions and patterns from the report) is cached in `~/.claude/statusline-tip.json` for 1h, and the displayed pick rotates hourly by `epoch_hour % tip_count` — same pick across every session on the machine within the same hour. The extraction logic lives in `insights-tip/extract-tip.{ps1,sh}` next to the statusline script. No tip line is shown until you've run `/insights` at least once.
+- The `/tip` custom slash command (auto-installed to `~/.claude/commands/tip.md` on first statusline run) shows the 2-3 sentence `details` for the current tip; `/tip 3` shows tip 3's details specifically. Tip numbers are stable within a single `/insights` report and reset when a new report is produced. To opt out of `/tip` auto-installation, create an empty file at `~/.claude/commands/.tip-uninstalled`.

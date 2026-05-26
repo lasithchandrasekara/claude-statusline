@@ -219,8 +219,20 @@ ${s_line}"
   done
 fi
 
+# Insights tip (rotates hourly from latest /insights report)
+tip_text=""
+tip_helper="$(dirname "${BASH_SOURCE[0]}")/insights-tip/extract-tip.sh"
+if [ -f "$tip_helper" ]; then
+  . "$tip_helper"
+  tip_text=$(get_insights_tip "$now")
+fi
+
 output="${parts%  }"
 if [ -n "$session_lines" ]; then
   output="${output}${session_lines}"
+fi
+if [ -n "$tip_text" ]; then
+  output="${output}
+$(printf "${dim}%s${reset}" "$tip_text")"
 fi
 printf "%s" "$output"

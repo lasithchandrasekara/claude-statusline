@@ -185,8 +185,19 @@ if (Test-Path $sessionDir) {
     }
 }
 
+# Insights tip (rotates hourly from latest /insights report)
+$tipText = $null
+$tipHelper = Join-Path $PSScriptRoot "insights-tip\extract-tip.ps1"
+if (Test-Path $tipHelper) {
+    . $tipHelper
+    try { $tipText = Get-InsightsTip -Now $now } catch { $tipText = $null }
+}
+
 $output = $parts -join "  "
 foreach ($line in $sessionLines) {
     $output += "`n" + $line
+}
+if ($tipText) {
+    $output += "`n${dim}${tipText}${reset}"
 }
 [Console]::Write($output)
