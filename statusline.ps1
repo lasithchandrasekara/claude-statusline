@@ -19,14 +19,58 @@ function Format-TimeRemaining([long]$seconds) {
     return "${m}m"
 }
 
+function Get-VisibleLength([string]$s) {
+    return ([regex]::Replace($s, "$([char]27)\[[0-9;]*m", "")).Length
+}
+
+# Width budget for row 1. Terminal width can't be detected in the statusline
+# spawn (no console, no env var from Claude Code), so this is a fixed value:
+# STATUSLINE_MAX_WIDTH env var if set, else a 200-column default.
+function Get-WidthBudget {
+    $envW = 0
+    if ($env:STATUSLINE_MAX_WIDTH -and [int]::TryParse($env:STATUSLINE_MAX_WIDTH, [ref]$envW) -and $envW -gt 0) {
+        return $envW
+    }
+    return 200
+}
+
+# Drop whole middle directory segments (keep root + leaf) until the path fits $target.
+function Compress-FolderPath([string]$path, [int]$target) {
+    $segs = $path -split '/'
+    if ($segs.Count -le 2) { return $path }
+    $last = $segs[$segs.Count - 1]
+    for ($keep = $segs.Count - 1; $keep -ge 1; $keep--) {
+        if ($keep -ge ($segs.Count - 1)) {
+            $candidate = $path
+        } else {
+            $candidate = (($segs[0..($keep - 1)]) -join '/') + '/.../' + $last
+        }
+        if ($candidate.Length -le $target) { return $candidate }
+    }
+    return $segs[0] + '/.../' + $last
+}
+
+# Trim the tail of a branch (keep the front), append "...", with a 20-char floor
+# so a "type/ticket" prefix like "feature/lsc.716962" survives.
+function Compress-Branch([string]$branch, [int]$target) {
+    if ($branch.Length -le $target) { return $branch }
+    $keep = $target - 3
+    if ($keep -lt 20) { $keep = 20 }
+    if ($keep -ge $branch.Length) { return $branch }
+    return $branch.Substring(0, $keep) + '...'
+}
+
 $now = [DateTimeOffset]::UtcNow.ToUnixTimeSeconds()
 
 $parts = @()
+$folderIdx = -1
+$branchIdx = -1
 
 # Current working directory (shortened)
 $cwd = if ($json.workspace.current_dir) { $json.workspace.current_dir } else { $json.cwd }
 if ($cwd) {
     $displayPath = ($cwd -replace [regex]::Escape($env:USERPROFILE), '~') -replace '\\', '/'
+    $folderIdx = $parts.Count
     $parts += "${dim}${displayPath}${reset}"
 }
 
@@ -36,8 +80,10 @@ if ($cwd) {
     $gitTopLevel = git -C "$cwd" --no-optional-locks rev-parse --show-toplevel 2>$null
     $gitRepoName = if ($gitTopLevel) { Split-Path -Leaf $gitTopLevel } else { $null }
     if ($gitRepoName -and $gitBranch) {
+        $branchIdx = $parts.Count
         $parts += "${cyan}${gitRepoName}/${gitBranch}${reset}"
     } elseif ($gitBranch) {
+        $branchIdx = $parts.Count
         $parts += "${cyan}${gitBranch}${reset}"
     } elseif ($gitRepoName) {
         $parts += "${cyan}${gitRepoName}${reset}"
@@ -191,6 +237,55 @@ $tipHelper = Join-Path $PSScriptRoot "insights-tip\extract-tip.ps1"
 if (Test-Path $tipHelper) {
     . $tipHelper
     try { $tipText = Get-InsightsTip -Now $now } catch { $tipText = $null }
+}
+
+# Shorten folder/branch when row 1 exceeds the terminal width budget.
+# Shorten the longer of the two first (folder=middle segments, branch=tail);
+# if still too long, shorten the other too.
+$budget = Get-WidthBudget
+if ((Get-VisibleLength ($parts -join "  ")) -gt $budget) {
+    $overflow = (Get-VisibleLength ($parts -join "  ")) - $budget
+    $folder = if ($folderIdx -ge 0) { $displayPath } else { $null }
+    $branch = if ($branchIdx -ge 0) { $gitBranch } else { $null }
+    $folderLen = 0
+    if ($folder) { $folderLen = $folder.Length }
+    $branchLen = 0
+    if ($branch) { $branchLen = $branch.Length }
+
+    $order = @()
+    if ($folderLen -ge $branchLen) {
+        if ($folder) { $order += 'folder' }
+        if ($branch) { $order += 'branch' }
+    } else {
+        if ($branch) { $order += 'branch' }
+        if ($folder) { $order += 'folder' }
+    }
+
+    $remaining = $overflow
+    foreach ($kind in $order) {
+        if ($remaining -le 0) { break }
+        if ($kind -eq 'folder') {
+            $target = [Math]::Max(0, $folder.Length - $remaining)
+            $newFolder = Compress-FolderPath $folder $target
+            $removed = $folder.Length - $newFolder.Length
+            if ($removed -gt 0) {
+                $parts[$folderIdx] = "${dim}${newFolder}${reset}"
+                $remaining -= $removed
+            }
+        } else {
+            $target = [Math]::Max(0, $branch.Length - $remaining)
+            $newBranch = Compress-Branch $branch $target
+            $removed = $branch.Length - $newBranch.Length
+            if ($removed -gt 0) {
+                if ($gitRepoName) {
+                    $parts[$branchIdx] = "${cyan}${gitRepoName}/${newBranch}${reset}"
+                } else {
+                    $parts[$branchIdx] = "${cyan}${newBranch}${reset}"
+                }
+                $remaining -= $removed
+            }
+        }
+    }
 }
 
 $output = $parts -join "  "

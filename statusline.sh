@@ -21,6 +21,53 @@ format_time_remaining() {
   fi
 }
 
+_visible_len() {
+  local esc stripped
+  esc=$(printf '\033')
+  stripped=$(printf '%s' "$1" | sed "s/${esc}\[[0-9;]*m//g")
+  printf '%s' "${#stripped}"
+}
+
+# Width budget for row 1. Terminal width can't be detected in the statusline
+# spawn, so this is a fixed value: $STATUSLINE_MAX_WIDTH if set, else 200.
+_width_budget() {
+  if [ -n "$STATUSLINE_MAX_WIDTH" ] && [ "$STATUSLINE_MAX_WIDTH" -gt 0 ] 2>/dev/null; then
+    printf '%s' "$STATUSLINE_MAX_WIDTH"; return
+  fi
+  printf '%s' "200"
+}
+
+# Drop whole middle directory segments (keep root + leaf) until path fits $target.
+_compress_folder() {
+  local path=$1 target=$2
+  local IFS='/'
+  local segs=($path)
+  local n=${#segs[@]}
+  if [ "$n" -le 2 ]; then printf '%s' "$path"; return; fi
+  local last="${segs[$((n-1))]}"
+  local keep candidate prefix
+  for ((keep=n-1; keep>=1; keep--)); do
+    if [ "$keep" -ge "$((n-1))" ]; then
+      candidate="$path"
+    else
+      prefix="${segs[*]:0:keep}"
+      candidate="${prefix}/.../${last}"
+    fi
+    if [ "${#candidate}" -le "$target" ]; then printf '%s' "$candidate"; return; fi
+  done
+  printf '%s' "${segs[0]}/.../${last}"
+}
+
+# Trim branch tail, append "...", 20-char floor so type/ticket prefix survives.
+_compress_branch() {
+  local branch=$1 target=$2
+  if [ "${#branch}" -le "$target" ]; then printf '%s' "$branch"; return; fi
+  local keep=$((target - 3))
+  [ "$keep" -lt 20 ] && keep=20
+  if [ "$keep" -ge "${#branch}" ]; then printf '%s' "$branch"; return; fi
+  printf '%s' "${branch:0:keep}..."
+}
+
 now=$(date -u +%s)
 
 model=$(echo "$input" | jq -r '.model.display_name // "Unknown model"')
@@ -225,6 +272,54 @@ tip_helper="$(dirname "${BASH_SOURCE[0]}")/insights-tip/extract-tip.sh"
 if [ -f "$tip_helper" ]; then
   . "$tip_helper"
   tip_text=$(get_insights_tip "$now")
+fi
+
+# Shorten folder/branch when row 1 exceeds the width budget. Shorten the longer
+# of the two first (folder=middle segments, branch=tail); if still too long,
+# shorten the other too.
+budget=$(_width_budget)
+row1="${parts%  }"
+vis=$(_visible_len "$row1")
+if [ "$vis" -gt "$budget" ] 2>/dev/null; then
+  overflow=$((vis - budget))
+  folder="$display_path"
+  branch="$git_branch"
+  folder_len=${#folder}
+  branch_len=${#branch}
+  order=()
+  if [ "$folder_len" -ge "$branch_len" ]; then
+    [ -n "$folder" ] && order+=("folder")
+    [ -n "$branch" ] && order+=("branch")
+  else
+    [ -n "$branch" ] && order+=("branch")
+    [ -n "$folder" ] && order+=("folder")
+  fi
+  remaining=$overflow
+  for kind in "${order[@]}"; do
+    [ "$remaining" -le 0 ] && break
+    if [ "$kind" = "folder" ]; then
+      tgt=$((folder_len - remaining)); [ "$tgt" -lt 0 ] && tgt=0
+      new_folder=$(_compress_folder "$folder" "$tgt")
+      removed=$((folder_len - ${#new_folder}))
+      if [ "$removed" -gt 0 ]; then
+        parts="${parts/"$folder"/"$new_folder"}"
+        remaining=$((remaining - removed))
+      fi
+    else
+      tgt=$((branch_len - remaining)); [ "$tgt" -lt 0 ] && tgt=0
+      new_branch=$(_compress_branch "$branch" "$tgt")
+      removed=$((branch_len - ${#new_branch}))
+      if [ "$removed" -gt 0 ]; then
+        if [ -n "$git_repo" ]; then
+          pat="${git_repo}/${branch}"; repl="${git_repo}/${new_branch}"
+        else
+          pat="$branch"; repl="$new_branch"
+        fi
+        parts="${parts/"$pat"/"$repl"}"
+        remaining=$((remaining - removed))
+      fi
+    fi
+  done
 fi
 
 output="${parts%  }"
